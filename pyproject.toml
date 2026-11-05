@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 skiing-simulation = "skiing_simulation:main"
+skiing-zhang-simulation = "skiing_simulation.zhang.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.3,<0.14.0"]
