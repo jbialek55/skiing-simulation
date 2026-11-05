@@ -3,13 +3,12 @@ name = "skiing-simulation"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-authors = [
-    { name = "Jakub Bialek", email = "jbialek@student.agh.edu.pl" }
-]
 requires-python = ">=3.15"
 dependencies = [
+    "matplotlib>=3.11.2",
     "mesa>=3.5.2",
     "numpy>=2.5.4",
+    "scipy>=1.18.1",
 ]
 
 [project.scripts]
