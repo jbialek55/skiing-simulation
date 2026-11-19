@@ -31,23 +31,22 @@ class SlopeVisualizer:
         self.model = model
         self.terrain = model.terrain
 
-    def setup_figure(self) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes, plt.Axes, plt.Axes, plt.Axes]]:
-        """Przygotowuje układ wykresów: rzut stoku z góry + telemetria (prędkość, tarcie, wysokość)."""
-        fig = plt.figure(figsize=(14, 8.8), dpi=100)
+    def setup_figure(self) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes, plt.Axes, plt.Axes]]:
+        """Przygotowuje układ wykresów: rzut stoku z góry + telemetria (prędkość, wysokość)."""
+        fig = plt.figure(figsize=(14, 8.5), dpi=100)
         gs = fig.add_gridspec(
-            4, 3,
-            width_ratios=[1.7, 1.0, 1.0],
-            height_ratios=[1.0, 1.0, 1.0, 0.32],
-            hspace=0.38, wspace=0.35,
+            3, 2,
+            width_ratios=[1.35, 1.0],
+            height_ratios=[1.0, 1.0, 0.22],
+            hspace=0.36, wspace=0.30,
         )
 
-        ax_slope = fig.add_subplot(gs[0:3, 0])
-        ax_status = fig.add_subplot(gs[3, 0])
+        ax_slope = fig.add_subplot(gs[0:2, 0])
+        ax_status = fig.add_subplot(gs[2, 0])
         ax_status.axis("off")  # Czyste pole pod stokiem na panel telemetryczny
 
-        ax_speed = fig.add_subplot(gs[0, 1:])
-        ax_friction = fig.add_subplot(gs[1, 1:])
-        ax_elev = fig.add_subplot(gs[2:, 1:])
+        ax_speed = fig.add_subplot(gs[0, 1])
+        ax_elev = fig.add_subplot(gs[1:, 1])
 
         self._draw_static_terrain(ax_slope)
 
@@ -64,11 +63,6 @@ class SlopeVisualizer:
         ax_speed.set_ylim(0.0, 90.0)
         ax_speed.grid(True, linestyle=":", alpha=0.5)
 
-        ax_friction.set_title("Współczynnik tarcia podłoża (μ)", fontsize=10, fontweight="bold")
-        ax_friction.set_ylabel("μ")
-        ax_friction.set_ylim(0.0, 0.20)
-        ax_friction.grid(True, linestyle=":", alpha=0.5)
-
         slope_label = f"Stok {self.terrain.slope_name.upper()} (Engelberg, Szwajcaria)"
         ax_elev.set_title(f"Profil wysokości Z(y) [m n.p.m.] - {slope_label}", fontsize=10, fontweight="bold")
         ax_elev.set_xlabel("Długość zjazdu [m]")
@@ -76,7 +70,7 @@ class SlopeVisualizer:
         ax_elev.set_ylim(self.terrain.finish_altitude - 20, self.terrain.start_altitude + 20)
         ax_elev.grid(True, linestyle=":", alpha=0.5)
 
-        return fig, (ax_slope, ax_speed, ax_friction, ax_elev, ax_status)
+        return fig, (ax_slope, ax_speed, ax_elev, ax_status)
 
     def _draw_static_terrain(self, ax: plt.Axes) -> None:
         """Rysuje statyczne elementy stoku: poziomice, granice, przeszkody."""
@@ -122,7 +116,7 @@ class SlopeVisualizer:
 
     def render_static_result(self, output_path: str = "simulation_result.png") -> None:
         """Zapisuje podsumowanie ukończonej symulacji z trajektorią narciarza i telemetrią."""
-        fig, (ax_slope, ax_speed, ax_friction, ax_elev, ax_status) = self.setup_figure()
+        fig, (ax_slope, ax_speed, ax_elev, ax_status) = self.setup_figure()
 
         skiers = [a for a in self.model.agents if isinstance(a, BaseSkier)]
 
@@ -132,7 +126,6 @@ class SlopeVisualizer:
 
             traj = np.array([(p[0], p[1]) for p in skier.trajectory])
             speeds = np.array([p[2] * 3.6 for p in skier.trajectory])
-            frictions = np.array([p[3] for p in skier.trajectory])
             ys = traj[:, 1]
             elevations = [self.terrain.get_elevation(p[0], p[1]) for p in skier.trajectory]
 
@@ -176,16 +169,12 @@ class SlopeVisualizer:
             # Wykres prędkości każdego narciarza z osobna
             ax_speed.plot(ys, speeds, color=c, linewidth=1.8, label=f"Narciarz #{skier.skier_id}")
 
-            # Wykres tarcia podłoża każdego narciarza z osobna
-            ax_friction.plot(ys, frictions, color=c, linewidth=1.8, label=f"μ #{skier.skier_id}")
-
             # Profil wysokości (wystarczy dla pierwszego narciarza)
             if i == 0:
                 ax_elev.plot(ys, elevations, color="navy", linewidth=1.8)
 
         # Linie referencyjne
         ax_speed.axhline(54.0, color="green", linestyle=":", alpha=0.7, label="Średnia w artykule (~54 km/h)")
-        ax_friction.axhline(0.10, color="black", linestyle="--", alpha=0.5, label="Śnieg bazowy (μ=0.10)")
 
         # Statystyki zjazdu - umieszczone pod stokiem w ax_status (nie zachodzą na stok!)
         stats = self.model.get_summary_stats()
@@ -205,8 +194,7 @@ class SlopeVisualizer:
 
         ax_slope.legend(loc="upper right", fontsize=7.5, framealpha=0.85)
         ax_speed.legend(loc="upper right", fontsize=7.5, framealpha=0.85)
-        ax_friction.legend(loc="upper right", fontsize=7.5, framealpha=0.85)
-        fig.subplots_adjust(left=0.07, right=0.96, top=0.94, bottom=0.05, wspace=0.35, hspace=0.38)
+        fig.subplots_adjust(left=0.07, right=0.96, top=0.94, bottom=0.05, wspace=0.30, hspace=0.36)
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
         fig.savefig(output_path, dpi=150)
@@ -224,13 +212,11 @@ class SlopeVisualizer:
         Interaktywna animacja zjazdu ze zoptymalizowanym renderowaniem
         oraz możliwością dynamicznej zmiany tempa klawiszami (+ / - / Spacja).
         """
-        fig, (ax_slope, ax_speed, ax_friction, ax_elev, ax_status) = self.setup_figure()
+        fig, (ax_slope, ax_speed, ax_elev, ax_status) = self.setup_figure()
 
         # Ustawienie stałych limitów osi (eliminuje kosztowne przeliczanie widoku co klatkę)
         ax_speed.set_xlim(0, self.terrain.length)
         ax_speed.set_ylim(0, 95)
-        ax_friction.set_xlim(0, self.terrain.length)
-        ax_friction.set_ylim(0, 0.20)
         ax_elev.set_xlim(0, self.terrain.length)
         ax_elev.set_ylim(self.terrain.finish_altitude - 20, self.terrain.start_altitude + 20)
         
@@ -242,12 +228,10 @@ class SlopeVisualizer:
         skier_dots = []
         skier_trails = []
         speed_lines = []
-        friction_lines = []
 
         x_trails = [[] for _ in skiers]
         y_trails = [[] for _ in skiers]
         speed_trails = [[] for _ in skiers]
-        friction_trails = [[] for _ in skiers]
 
         for i, skier in enumerate(skiers):
             c = SKIER_COLORS[i % len(SKIER_COLORS)]
@@ -268,21 +252,14 @@ class SlopeVisualizer:
             (s_line,) = ax_speed.plot([], [], "-", color=c, linewidth=1.8, label=f"Narciarz #{skier.skier_id}")
             speed_lines.append(s_line)
 
-            (f_line,) = ax_friction.plot([], [], "-", color=c, linewidth=1.8, label=f"μ #{skier.skier_id}")
-            friction_lines.append(f_line)
-
             # Punkt początkowy
             x_trails[i].append(skier.pos[0])
             y_trails[i].append(skier.pos[1])
             speed_trails[i].append(skier.speed_kmh)
-            friction_trails[i].append(self.terrain.get_friction(skier.pos[0], skier.pos[1]))
 
         # Linie referencyjne
         ax_speed.axhline(54.0, color="green", linestyle=":", alpha=0.7, label="Średnia z artykułu (54 km/h)")
         ax_speed.legend(loc="upper right", fontsize=7.5, framealpha=0.85)
-
-        ax_friction.axhline(0.10, color="black", linestyle="--", alpha=0.6, label="Śnieg bazowy (μ=0.10)")
-        ax_friction.legend(loc="upper right", fontsize=7.5, framealpha=0.85)
 
         ax_slope.legend(loc="upper right", fontsize=7.5, framealpha=0.85)
 
@@ -323,12 +300,10 @@ class SlopeVisualizer:
                 x_trails[i].append(skier.pos[0])
                 y_trails[i].append(skier.pos[1])
                 speed_trails[i].append(skier.speed_kmh)
-                friction_trails[i].append(self.terrain.get_friction(skier.pos[0], skier.pos[1]))
 
                 skier_trails[i].set_data(x_trails[i], y_trails[i])
                 skier_dots[i].set_data([skier.pos[0]], [skier.pos[1]])
                 speed_lines[i].set_data(y_trails[i], speed_trails[i])
-                friction_lines[i].set_data(y_trails[i], friction_trails[i])
 
                 if skier.status == "finished":
                     skier_dots[i].set_marker("*")
@@ -343,9 +318,9 @@ class SlopeVisualizer:
                 f"Tempo: {sim_state['speedup']}x{pause_str}\n"
                 f"[Spacja: Pauza | +/-: Zmiana tempa]"
             )
-            return skier_trails + skier_dots + speed_lines + friction_lines + [title_text]
+            return skier_trails + skier_dots + speed_lines + [title_text]
 
-        fig.subplots_adjust(left=0.07, right=0.96, top=0.94, bottom=0.05, wspace=0.35, hspace=0.38)
+        fig.subplots_adjust(left=0.07, right=0.96, top=0.94, bottom=0.05, wspace=0.30, hspace=0.36)
         total_frames = max_steps // steps_per_frame
         anim = FuncAnimation(fig, update, frames=total_frames, interval=interval, blit=False, repeat=False)
 

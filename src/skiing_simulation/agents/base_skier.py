@@ -105,9 +105,9 @@ class BaseSkier(Agent):
         for y_wp in y_targets:
             y_clamped = min(y_wp, length - 2.0)
             x_left, x_right = terrain.get_borders_at(y_clamped)
-            # Losowy punkt z rozkładu jednostajnego między krawędziami (z buforem 5m od brzegu)
+            # Losowy punkt z rozkładu jednostajnego między krawędziami (kontrolowany przez model.rng)
             margin = 6.0
-            x_wp = np.random.uniform(x_left + margin, x_right - margin)
+            x_wp = float(self.model.rng.uniform(x_left + margin, x_right - margin))
             self.waypoints.append(np.array([x_wp, y_clamped], dtype=float))
 
         # Punkt celu poza linią mety

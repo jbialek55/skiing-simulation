@@ -199,21 +199,20 @@ Podczas wyświetlania okna animacji dostępne są interaktywne klawisze:
 
 ## 6. Wizualizacja i Telemetria
 
-W oknie animacji oraz na wygenerowanym wykresie `data/simulation_result.png` wyświetlane są 4 zsynchronizowane panele:
+W oknie animacji oraz na wygenerowanym wykresie `data/simulation_result.png` wyświetlane są przejrzyste, zsynchronizowane panele:
 
 1. **Rzut stoku z góry (Top-Down 2D)**:
    * Kolorowe poziomice wysokości,
    * Czerwone przerywane linie brzegowe stoku (o zmiennej szerokości wg Table I),
    * **Każdy narciarz posiada własny, unikalny kolor** z palety `SKIER_COLORS`,
    * Punkty nawigacyjne (diamenty) w kolorze danego narciarza,
-   * Ciągły ślad trajektorii i dynamiczne markery pozycji.
+   * Ciągły ślad trajektorii i dynamiczne markery pozycji,
+   * **Dedykowany panel telemetryczny pod stokiem** (czas, narciarze, $V_{avg}$, tempo animacji) – nie zasłaniający trasy zjazdu.
 2. **Wykres prędkości $v(y)$ [km/h]**:
-   * Osobne krzywe prędkości w czasie rzeczywistym dla każdego narciarza,
+   * Osobne, czytelne krzywe prędkości w czasie rzeczywistym dla każdego narciarza w jego unikalnym kolorze,
    * Pozioma linia odniesienia $\approx 54\text{ km/h}$ z artykułu.
-3. **Wykres współczynnika tarcia $\mu(y)$**:
-   * Bieżący odczyt tarcia pod nartami każdego zawodnika (bazowe $\mu = 0.10$, spadek do $\mu = 0.04$ w strefach oblodzenia).
-4. **Profil wysokościowy $Z(y)$ [m n.p.m.]**:
-   * Ukształtowanie pionowe stoku z wyraźnie widocznym wypłaszczeniem i przeciwstokiem.
+3. **Profil wysokościowy $Z(y)$ [m n.p.m.]**:
+   * Ukształtowanie pionowe stoku z rzędnymi wysokościowymi oraz wyraźnie widocznym wypłaszczeniem i przeciwstokiem.
 
 ---
 
