@@ -3,8 +3,8 @@ import numpy as np
 from mesa import Model
 from mesa.space import ContinuousSpace
 
-from skiing_simulation.slope.terrain import SlopeTerrain
-from skiing_simulation.agents.base_skier import BaseSkier
+from skiing_simulation.holleczek.terrain import SlopeTerrain
+from skiing_simulation.holleczek.agent import BaseSkier
 
 
 class SkiModel(Model):

@@ -1,16 +1,11 @@
-"""
-Punkt wejścia do symulacji ruchu narciarzy zgodny z:
-Thomas Holleczek & Gerhard Tröster (ETH Zurich),
-"Particle-based model for skiing traffic", Phys. Rev. E 85, 056101 (2012).
-"""
-import sys
-import os
+"""Uniwersalny punkt wejścia do symulacji narciarskich (domyślnie uruchamia model Holleczka)."""
 
-# Upewnij się, że katalog 'src' jest w ścieżce wyszukiwania modułów
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from skiing_simulation import main
+from skiing_simulation.holleczek.cli import main
 
 if __name__ == "__main__":
     main()
-

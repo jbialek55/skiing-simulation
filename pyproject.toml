@@ -1,7 +1,7 @@
 [project]
 name = "skiing-simulation"
 version = "0.1.0"
-description = "Add your description here"
+description = "Symulacje ruchu narciarzy: modele Holleczka (2012), Zhanga (2024) oraz Kamińskiego (2026)"
 readme = "README.md"
 requires-python = ">=3.15"
 dependencies = [
@@ -12,7 +12,8 @@ dependencies = [
 ]
 
 [project.scripts]
-skiing-simulation = "skiing_simulation:main"
+skiing-simulation = "skiing_simulation.holleczek.cli:main"
+skiing-holleczek-simulation = "skiing_simulation.holleczek.cli:main"
 skiing-zhang-simulation = "skiing_simulation.zhang.cli:main"
 skiing-kaminski-simulation = "skiing_simulation.kaminski.cli:main"
 

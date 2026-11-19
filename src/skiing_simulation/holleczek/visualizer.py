@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.animation import FuncAnimation
 
-from skiing_simulation.slope.SlopeModel import SkiModel
-from skiing_simulation.agents.base_skier import BaseSkier
+from skiing_simulation.holleczek.model import SkiModel
+from skiing_simulation.holleczek.agent import BaseSkier
 
 # Paleta unikalnych, wyraźnych kolorów dla narciarzy
 SKIER_COLORS = [

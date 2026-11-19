@@ -29,20 +29,20 @@ Projekt został zaimplementowany w Pythonie 3 przy użyciu biblioteki agentowej 
 ```text
 skiing-simulation/
 ├── HOLLECZEK.md                     # Niniejsza dokumentacja
-├── main.py                          # Główny skrót startowy CLI
+├── holleczek_main.py                # Dedykowany punkt startowy modelu Holleczka
+├── main.py                          # Uniwersalny skrót startowy CLI
 ├── pyproject.toml                   # Konfiguracja środowiska (uv / pip)
 ├── data/
 │   └── simulation_result.png        # Generowane wykresy trajektorii i telemetrii
 └── src/
     └── skiing_simulation/
-        ├── __init__.py              # Moduł główny CLI i analiza statystyczna
-        ├── agents/
-        │   └── base_skier.py        # Klasa BaseSkier (Mesa Agent) – siły społeczne i fizyka
-        ├── slope/
-        │   ├── terrain.py           # SlopeTerrain – model terenu 2.5D DEM, gradienty, krawędzie
-        │   └── SlopeModel.py        # SkiModel (Mesa Model) – przestrzeń ciągła ContinuousSpace
-        └── visualize/
-            └── visualizer.py        # SlopeVisualizer – widok z góry + telemetria wieloagentowa
+        └── holleczek/
+            ├── __init__.py          # Eksport klas i symboli modelu
+            ├── agent.py             # Klasa BaseSkier (Mesa Agent) – siły społeczne i fizyka
+            ├── model.py             # Klasa SkiModel (Mesa Model) – przestrzeń ciągła ContinuousSpace
+            ├── terrain.py           # SlopeTerrain – model terenu 2.5D DEM, gradienty, krawędzie
+            ├── visualizer.py        # SlopeVisualizer – widok z góry + telemetria wieloagentowa
+            └── cli.py               # Konsolowy interfejs CLI modelu
 ```
 
 ---
@@ -235,8 +235,8 @@ Wyniki wygenerowane przez naszą symulację wykazują niemal idealną zgodność
 Model można zaimportować i wykorzystać we własnych skryptach badawczych:
 
 ```python
-from skiing_simulation.slope.SlopeModel import SkiModel
-from skiing_simulation.visualize.visualizer import SlopeVisualizer
+from skiing_simulation.holleczek.model import SkiModel
+from skiing_simulation.holleczek.visualizer import SlopeVisualizer
 
 # 1. Utworzenie stoku (np. Jochstock)
 model = SkiModel(slope_name="jochstock", dt=0.01)
