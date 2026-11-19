@@ -54,6 +54,7 @@ class Skier(Agent):
 
         self.v_max = self.v_max_p
         self.is_finished = False
+        self.start_step: int = model.simulation_step
 
         # Stan awaryjny (wypadek / upadek)
         self.crash_recovery_timer: int = 0

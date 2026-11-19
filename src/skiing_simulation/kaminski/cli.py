@@ -54,6 +54,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Ziarno generatora liczb losowych (domyślnie: 42)",
     )
     parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=6,
+        help="Liczba narciarzy wypuszczanych w jednej partii (domyślnie: 6)",
+    )
+    parser.add_argument(
+        "--batch-interval",
+        type=int,
+        default=15,
+        help="Odstęp czasu w sekundach między kolejnymi partiami (domyślnie: 15 s)",
+    )
+    parser.add_argument(
         "--features",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -96,7 +108,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         enable_terrain_features=args.features,
         seed=args.seed,
     )
-    model.populate_skiers(count=args.skiers, stagger_y=True)
+    if args.skiers > 6:
+        model.populate_batches(
+            total_skiers=args.skiers,
+            batch_size=args.batch_size,
+            batch_interval=args.batch_interval,
+        )
+    else:
+        model.populate_skiers(count=args.skiers, stagger_y=True)
 
     print("\n▶ Trwa wykonywanie symulacji (aż wszyscy dojadą do końca)...")
     model.run_simulation(max_steps=args.max_steps)

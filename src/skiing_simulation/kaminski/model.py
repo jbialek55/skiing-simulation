@@ -2,10 +2,11 @@
 
 Obsługuje:
 - Środowisko symulacji oparte na MultiGrid,
-- Anizotropowe (eliptyczne/stożkowe) rzutowanie strefy ryzyka kolizji wzdłuż wektora prędkości narciarza,
-- Detekcję kolizji, zderzeń i przecięć trajektorii z wprowadzeniem stanu awaryjnego (upadek/zator),
-- Dynamiczną stygmergię stoku (zużycie podłoża),
-- Gromadzenie zaawansowanej telemetrii.
+- Wypuszczanie narciarzy w partiach (np. batch_size co batch_interval kroków),
+- Anizotropowe stożkowe strefy unikania kolizji,
+- Detekcję kolizji: bezpośrednich (współdzielenie komórki) oraz geometrycznych (przecięcie trajektorii w danym kroku),
+- Detekcję zderzeń ze słupami wyciągu / przeszkodami stałymi (natychmiastowy wypadek),
+- Gromadzenie danych telemetrycznych.
 """
 
 from __future__ import annotations
@@ -46,8 +47,13 @@ class SkiModel(Model):
         self.simulation_step = 0
         self.total_collisions = 0
         self.total_crashes = 0
+        self.total_obstacle_hits = 0
 
-        # Mapa cieplna kolizji
+        # Harmonogram wypuszczania partii (batches)
+        self.pending_skiers_queue: List[Dict[str, Any]] = []
+        self.batch_interval: int = 15
+
+        # Mapy rejestracji zdarzeń
         self.collision_heatmap = np.zeros((length, width), dtype=int)
         self.crash_locations: List[Tuple[int, int]] = []
 
@@ -89,15 +95,48 @@ class SkiModel(Model):
         self.grid.place_agent(skier, (x, y))
         return skier
 
+    def populate_batches(
+        self,
+        total_skiers: int = 24,
+        batch_size: int = 6,
+        batch_interval: int = 15,
+    ) -> None:
+        """Kolejkuje wypuszczanie narciarzy w seriach/partiach."""
+        self.batch_interval = batch_interval
+        self.pending_skiers_queue = []
+
+        # Wypuść pierwszą partię natychmiast na starcie
+        first_batch = min(total_skiers, batch_size)
+        for i in range(first_batch):
+            start_y = (i * 3) % 10 + 2
+            self.add_skier(y=start_y)
+
+        # Resztę zakolejkuj
+        remaining = total_skiers - first_batch
+        batch_idx = 1
+        while remaining > 0:
+            cur_b = min(remaining, batch_size)
+            release_step = batch_idx * batch_interval
+            for i in range(cur_b):
+                self.pending_skiers_queue.append({
+                    "release_step": release_step,
+                    "y": (i * 3) % 10 + 2,
+                })
+            remaining -= cur_b
+            batch_idx += 1
+
     def populate_skiers(
         self,
         count: int = 20,
         stagger_y: bool = True,
     ) -> None:
-        """Inicjalizuje grupę narciarzy na stoku."""
-        for i in range(count):
-            start_y = (i * 7) % 35 + 2 if stagger_y else 2
-            self.add_skier(y=start_y)
+        """Inicjalizuje narciarzy w partiach (domyślnie po 6 co 15 kroków)."""
+        if count <= 8:
+            for i in range(count):
+                start_y = (i * 5) % 25 + 2 if stagger_y else 2
+                self.add_skier(y=start_y)
+        else:
+            self.populate_batches(total_skiers=count, batch_size=6, batch_interval=15)
 
     def extract_anisotropic_collision_mask(
         self,
@@ -106,11 +145,7 @@ class SkiModel(Model):
         v: int,
         calling_agent: Skier,
     ) -> np.ndarray:
-        """Anizotropowa (eliptyczna/stożkowa) maska kolizji.
-
-        Zamiast symetrycznego koła, każdy inny narciarz rzutuje strefę ryzyka w kierunku
-        swojego aktualnego wektora ruchu. Obszar ZA nim nie blokuje innych.
-        """
+        """Anizotropowa (eliptyczna/stożkowa) maska unikania kolizji."""
         w = 2 * v + 1
         h = v + 1
         mask = np.ones((h, w), dtype=float)
@@ -125,7 +160,6 @@ class SkiModel(Model):
             ox, oy = other.pos
             ov = max(1.0, other.v)
 
-            # Jeśli narciarz ma upadek/wypadek, tworzy nieruchomą strefę kolizyjną
             if other.crash_recovery_timer > 0:
                 for r in range(h):
                     gy = y_start + r
@@ -136,12 +170,11 @@ class SkiModel(Model):
                             mask[r, c] *= (dist / 3.0)
                 continue
 
-            # Sprawdzenie bounding box
             if (agent_x - v - ov * 1.5 <= ox <= agent_x + v + ov * 1.5) and (
                 agent_y - ov <= oy <= agent_y + v + ov * 2.0
             ):
-                # Kierunkowy wektor innego narciarza
                 turn_dir = other.current_direction
+                # Wektor kierunkowy: lewo to -x, prawo to +x
                 vx_other = -0.5 * ov if turn_dir == "left" else (0.5 * ov if turn_dir == "right" else 0.0)
                 vy_other = ov
 
@@ -149,28 +182,23 @@ class SkiModel(Model):
                 dir_x = vx_other / v_len
                 dir_y = vy_other / v_len
 
-                # Oś prostopadła
                 perp_x = -dir_y
                 perp_y = dir_x
 
-                a_long = 1.3 * ov      # zasięg wzdłużny przed narciarzem
-                b_lat = 0.5 * ov + 1.0  # zasięg poprzeczny
+                a_long = 1.3 * ov
+                b_lat = 0.5 * ov + 1.0
 
                 for r in range(h):
                     gy = y_start + r
                     for c in range(w):
                         gx = x_start + c
-
-                        # Wektor od innego narciarza do rozpatrywanego punktu
                         dx_rel = gx - ox
                         dy_rel = gy - oy
 
                         proj_long = dx_rel * dir_x + dy_rel * dir_y
                         proj_lat = dx_rel * perp_x + dy_rel * perp_y
 
-                        # Strefa ryzyka tylko z przodu i z boków (za narciarzem proj_long < -1.0 nie grozi)
                         if proj_long >= -1.0:
-                            # Eliptyczna odległość znormalizowana
                             norm_dist_sq = (proj_long / a_long) ** 2 + (proj_lat / b_lat) ** 2
                             if norm_dist_sq < 1.0:
                                 factor = np.sqrt(norm_dist_sq)
@@ -178,48 +206,115 @@ class SkiModel(Model):
 
         return mask
 
+    def _check_trajectory_intersection(
+        self, p1: Tuple[int, int], p2: Tuple[int, int], q1: Tuple[int, int], q2: Tuple[int, int]
+    ) -> bool:
+        """Sprawdza, czy odcinki przemieszczenia dwóch narciarzy p1->p2 i q1->q2 przecinają się."""
+        def ccw(A, B, C):
+            return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+
+        return (ccw(p1, q1, q2) != ccw(p2, q1, q2)) and (ccw(p1, p2, q1) != ccw(p1, p2, q2))
+
     def step(self) -> None:
-        """Krok symulacji dla wszystkich narciarzy (staged activation: step -> advance)."""
+        """Krok symulacji dla wszystkich narciarzy (staged activation)."""
         self.simulation_step += 1
+
+        # 1. Wypuszczanie zakolejkowanych narciarzy z nowej partii
+        if self.pending_skiers_queue:
+            to_release = [s for s in self.pending_skiers_queue if s["release_step"] <= self.simulation_step]
+            for s_info in to_release:
+                self.add_skier(y=s_info["y"])
+                self.pending_skiers_queue.remove(s_info)
 
         active_skiers = [a for a in self.agents if not a.is_finished]
         if not active_skiers:
             return
 
-        # Faza 1: Obliczenie intencji i wylosowanie pozycji (z przeciążaniem pędem)
+        # Faza 1: Obliczenie intencji i wylosowanie pozycji
         for skier in active_skiers:
             skier.step()
+
+        # Zapamiętanie starych pozycji do testu przecięć
+        old_positions = {skier: skier.pos for skier in active_skiers}
 
         # Faza 2: Przesunięcie, stygmergia stoku i aktualizacja prędkości
         for skier in active_skiers:
             skier.advance()
 
-        # Faza 3: Detekcja kolizji oraz konsekwencji wypadków
-        # 1. Sprawdzenie współdzielenia komórek
-        occupied_cells: Dict[Tuple[int, int], List[Skier]] = {}
+        # Faza 3: Detekcja kolizji oraz kolizji z przeszkodami stałymi (słupami)
+        # A. Kolizje z przeszkodami stałymi (słupy wyciągu)
         for skier in active_skiers:
-            if not skier.is_finished:
-                pos = skier.pos
-                occupied_cells.setdefault(pos, []).append(skier)
-
-        for pos, skiers_in_cell in occupied_cells.items():
-            if len(skiers_in_cell) > 1:
-                self.total_collisions += 1
-                cx, cy = pos
-                self.collision_heatmap[cy, cx] += 1
-
-                # Jeśli prędkość względna była znaczna, dochodzi do wypadku/upadku
-                speeds = [s.v for s in skiers_in_cell]
-                if max(speeds) > 6.0:
-                    for s in skiers_in_cell:
-                        s.trigger_crash(recovery_time=self.rng.integers(6, 12))
+            if skier.is_finished or skier.crash_recovery_timer > 0 or skier.v < 1.0:
+                continue
+            sx, sy = skier.pos
+            for obs in self.terrain.obstacles:
+                dist = np.hypot(sx - obs["cx"], sy - obs["cy"])
+                if dist <= obs["radius"] + 0.3:
+                    # Uderzenie w słup wyciągu!
+                    self.total_obstacle_hits += 1
                     self.total_crashes += 1
-                    self.crash_locations.append(pos)
+                    self.crash_locations.append((sx, sy))
+                    skier.trigger_crash(recovery_time=int(self.rng.integers(8, 14)))
+                    # Bezpieczne odsunięcie leżącego narciarza na skraj słupa
+                    angle = np.arctan2(sy - obs["cy"], sx - obs["cx"])
+                    if dist < 0.1:
+                        angle = 0.0 if sx >= obs["cx"] else np.pi
+                    safe_dist = obs["radius"] + 1.2
+                    nx = int(np.clip(round(obs["cx"] + safe_dist * np.cos(angle)), 1, self.terrain.width - 2))
+                    ny = int(np.clip(round(obs["cy"] + safe_dist * np.sin(angle)), 1, self.terrain.length - 2))
+                    self.grid.move_agent(skier, (nx, ny))
+                    skier.pos = (nx, ny)
+                    break
+
+        # B. Kolizje między narciarzami: współdzielenie komórki LUB bliski dystans (<1.4m)
+        n_active = len(active_skiers)
+        for i in range(n_active):
+            s1 = active_skiers[i]
+            if s1.is_finished:
+                continue
+            for j in range(i + 1, n_active):
+                s2 = active_skiers[j]
+                if s2.is_finished:
+                    continue
+
+                # Jeśli obaj leżą po wypadku lub obaj stoją w miejscu, nie dochodzi do nowej kolizji
+                if s1.crash_recovery_timer > 0 and s2.crash_recovery_timer > 0:
+                    continue
+                if s1.v < 1.2 and s2.v < 1.2:
+                    continue
+
+                p1_old = old_positions[s1]
+                p1_new = s1.pos
+                p2_old = old_positions[s2]
+                p2_new = s2.pos
+
+                dist_now = np.hypot(p1_new[0] - p2_new[0], p1_new[1] - p2_new[1])
+                is_intersecting = self._check_trajectory_intersection(p1_old, p1_new, p2_old, p2_new)
+
+                if dist_now <= 1.4 or is_intersecting:
+                    self.total_collisions += 1
+                    cx = (p1_new[0] + p2_new[0]) // 2
+                    cy = (p1_new[1] + p2_new[1]) // 2
+                    self.collision_heatmap[cy, cx] += 1
+
+                    # Jeśli prędkość była znaczna, dochodzi do wypadku
+                    max_v = max(s1.v, s2.v)
+                    if max_v > 5.5:
+                        if s1.crash_recovery_timer == 0 and s1.v > 1.2:
+                            s1.trigger_crash(recovery_time=int(self.rng.integers(6, 11)))
+                        if s2.crash_recovery_timer == 0 and s2.v > 1.2:
+                            s2.trigger_crash(recovery_time=int(self.rng.integers(6, 11)))
+                        self.total_crashes += 1
+                        self.crash_locations.append((cx, cy))
 
     @property
     def all_finished(self) -> bool:
-        """Zwraca True, jeśli wszyscy narciarze ukończyli zjazd."""
-        return len(self.agents) > 0 and all(a.is_finished for a in self.agents)
+        """Zwraca True, jeśli wszyscy narciarze ukończyli zjazd i kolejka partii jest pusta."""
+        return (
+            len(self.pending_skiers_queue) == 0
+            and len(self.agents) > 0
+            and all(a.is_finished for a in self.agents)
+        )
 
     def run_simulation(self, max_steps: Optional[int] = None) -> None:
         """Uruchamia symulację aż wszyscy narciarze dojadą do końca stoku."""
@@ -251,6 +346,7 @@ class SkiModel(Model):
             "total_steps": self.simulation_step,
             "total_collisions": self.total_collisions,
             "total_crashes": self.total_crashes,
+            "total_obstacle_hits": self.total_obstacle_hits,
             "total_agent_crashes": total_agent_crashes,
             "average_speed_ms": avg_speed,
             "average_speed_kmh": avg_speed * 3.6,

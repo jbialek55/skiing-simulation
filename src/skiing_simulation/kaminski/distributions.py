@@ -2,10 +2,10 @@
 
 Zawiera:
 - Parametry rozkładów bazowych dla poszczególnych etapów zakrętów (Tabele 4.1 i 4.2),
+- Prawidłową orientację przestrzenną (lewo = -x, prawo = +x),
 - Generowanie dwuwymiarowego skośnego rozkładu normalnego (Skew-Normal),
-- Iloczyn Hadamarda rozkładu bazowego z maskami środowiskowymi i kolizyjnymi
-  oraz dynamicznym wykładnikiem sterowalności beta(v_self, skill),
-- Stochastyczny wybór nowej pozycji narciarza.
+- Iloczyn Hadamarda rozkładu bazowego z maskami środowiskowymi i kolizyjnymi,
+- Stochastyczny wybór nowej pozycji z bezwzględną ochroną przed wjazdem w przeszkody o p_c = 0.
 """
 
 from __future__ import annotations
@@ -17,40 +17,46 @@ from scipy.stats import skewnorm
 TurnDirection = Literal["left", "right", "down"]
 
 # Tabele 4.1 i 4.2 z rozprawy doktorskiej:
-# Wartości względne (jako ułamek w = szerokości sąsiedztwa i h = wysokości sąsiedztwa)
-# Dla zakrętów w lewo (Tabela 4.1). Zakręty w prawo to odbicie lustrzane mu_x = 1 - mu_x.
-TURN_TABLE_LEFT: Dict[int, List[Tuple[float, float]]] = {
+# W modelu Kamińskiego:
+# Układ współrzędnych siatki stoku: x=0 (lewa krawędź), x=width-1 (prawa krawędź), y=0 (góra), y=length-1 (dół).
+# W rozpatrywanym otoczeniu (2v+1) x (v+1):
+# środek w osi x to (w-1)/2.
+# Ruch w LEWO to zmniejszanie x (mu_x < 0.5 w).
+# Ruch w PRAWO to zwiększanie x (mu_x > 0.5 w).
+#
+# Poniższe współczynniki relatywne odpowiadają zakrętowi w LEWO (w stronę mniejszych x):
+TURN_TABLE_LEFT_REL: Dict[int, List[Tuple[float, float]]] = {
     3: [
-        (0.55, 0.70),
-        (0.60, 0.65),
-        (0.55, 0.70),
+        (0.45, 0.70),
+        (0.40, 0.65),
+        (0.45, 0.70),
     ],
     5: [
-        (0.55, 0.60),
-        (0.60, 0.55),
-        (0.65, 0.50),
-        (0.60, 0.55),
-        (0.55, 0.60),
+        (0.45, 0.60),
+        (0.40, 0.55),
+        (0.35, 0.50),
+        (0.40, 0.55),
+        (0.45, 0.60),
     ],
     7: [
-        (0.55, 0.70),
-        (0.65, 0.65),
-        (0.75, 0.60),
-        (0.80, 0.55),
-        (0.75, 0.60),
-        (0.65, 0.65),
-        (0.55, 0.70),
+        (0.45, 0.70),
+        (0.35, 0.65),
+        (0.25, 0.60),
+        (0.20, 0.55),
+        (0.25, 0.60),
+        (0.35, 0.65),
+        (0.45, 0.70),
     ],
     9: [
-        (0.55, 0.70),
-        (0.65, 0.60),
-        (0.75, 0.50),
-        (0.85, 0.40),
-        (0.90, 0.30),
-        (0.85, 0.40),
-        (0.75, 0.50),
-        (0.65, 0.60),
-        (0.55, 0.70),
+        (0.45, 0.70),
+        (0.35, 0.60),
+        (0.25, 0.50),
+        (0.15, 0.40),
+        (0.10, 0.30),
+        (0.15, 0.40),
+        (0.25, 0.50),
+        (0.35, 0.60),
+        (0.45, 0.70),
     ],
 }
 
@@ -77,13 +83,14 @@ def get_turn_mus(
         mu_y = 0.9 * s_y * (h - 1)
         return mu_x, mu_y
 
-    stages = TURN_TABLE_LEFT.get(length)
+    stages = TURN_TABLE_LEFT_REL.get(length)
     if stages is None or step_idx < 1 or step_idx > len(stages):
         raise ValueError(f"Nieprawidłowa długość zakrętu ({length}) lub etap ({step_idx})")
 
     rel_x, rel_y = stages[step_idx - 1]
 
     if turn_type == "right":
+        # Lustrzane odbicie względem środka dla skrętu w prawo:
         rel_x = 1.0 - rel_x
 
     # Korekta asymetryczna (dla snowboardu)
@@ -100,14 +107,14 @@ def compute_gamma_x(rel_pos: float, gamma_max: float = 5.0) -> float:
     """Wyznacza współczynnik skośności gamma_x w zależności od pozycji poprzecznej na stoku.
 
     rel_pos: pozycja na stoku jako ułamek szerokości [0.0 .. 1.0] (od lewej do prawej krawędzi).
-    Zgodnie z podrozdziałem 4.3.8 i Rysunkiem 4.10:
-    - rel_pos < 0.15 => +1.0 * gamma_max (blisko lewej krawędzi, odpychaj w prawo)
+    Zgodnie z Rysunkiem 4.10:
+    - rel_pos < 0.15 => +1.0 * gamma_max (blisko lewej krawędzi, odpychaj w prawo do wyższych x)
     - 0.15 <= rel_pos < 0.30 => +0.5 * gamma_max
     - 0.30 <= rel_pos < 0.40 => +0.25 * gamma_max
     - 0.40 <= rel_pos <= 0.60 => 0.0 (środek stoku)
     - 0.60 < rel_pos <= 0.70 => -0.25 * gamma_max
     - 0.70 < rel_pos <= 0.85 => -0.5 * gamma_max
-    - rel_pos > 0.85 => -1.0 * gamma_max (blisko prawej krawędzi, odpychaj w lewo)
+    - rel_pos > 0.85 => -1.0 * gamma_max (blisko prawej krawędzi, odpychaj w lewo do niższych x)
     """
     if rel_pos < 0.15:
         return 1.0 * gamma_max
@@ -131,18 +138,14 @@ def sample_turn_direction(
     free_right: int,
     rng: np.random.Generator,
 ) -> TurnDirection:
-    """Losuje kierunek kolejnego manewru zgodnie z intencją z podrozdziału 4.3.6.
-
-    Gdy poprzednio jazda na wprost lub start, preferowany jest kierunek z WIĘKSZĄ dostępną przestrzenią.
-    Poprawiono błąd z doktoratu zamieniający indeksy p_l i p_r.
-    """
+    """Losuje kierunek kolejnego manewru zgodnie z zasadą preferowania wolnej przestrzeni."""
     if prev_turn == "right":
-        # p_r = 0.1, p_l = 0.6, p_d = 0.3
+        # Po skręcie w prawo, preferowany skręt w lewo
         probs = [0.6, 0.1, 0.3]
         choices: List[TurnDirection] = ["left", "right", "down"]
         return rng.choice(choices, p=probs)
     elif prev_turn == "left":
-        # p_r = 0.6, p_l = 0.1, p_d = 0.3
+        # Po skręcie w lewo, preferowany skręt w prawo
         probs = [0.1, 0.6, 0.3]
         choices = ["left", "right", "down"]
         return rng.choice(choices, p=probs)
@@ -151,13 +154,13 @@ def sample_turn_direction(
         l = max(1, free_left)
         r = max(1, free_right)
         if l < r:
-            # Więcej miejsca z prawej strony (r > l), więc skręcamy w PRAWO (p_r wyższe)!
+            # Więcej miejsca z prawej strony (r > l), więc skręcamy w PRAWO
             p_r = 0.9 * (1.0 - (l / r))
             p_r = max(0.0, min(0.9, p_r))
             p_l = 0.9 - p_r
             p_d = 0.1
         else:
-            # Więcej miejsca z lewej strony (l >= r), więc skręcamy w LEWO (p_l wyższe)!
+            # Więcej miejsca z lewej strony (l >= r), więc skręcamy w LEWO
             p_l = 0.9 * (1.0 - (r / l))
             p_l = max(0.0, min(0.9, p_l))
             p_r = 0.9 - p_l
@@ -179,19 +182,14 @@ def sample_turn_length(
     lengths = [1, 3, 5, 7, 9]
 
     if style_preference == "plow":
-        # Pług: głównie jazda prosto lub krótkie asekuracyjne skręty
         probs = [0.35, 0.40, 0.20, 0.05, 0.00]
     elif style_preference == "short_turns":
-        # Śmig: silna preferencja krótkich, dynamicznych zakrętów
         probs = [0.05, 0.65, 0.25, 0.05, 0.00]
     elif style_preference == "carving":
-        # Carving: długie, szerokie łuki carvingowe
         probs = [0.05, 0.10, 0.25, 0.35, 0.25]
     elif style_preference == "snowboard":
-        # Snowboard: szerokie łuki z tendencją do trawersowania
         probs = [0.10, 0.15, 0.30, 0.25, 0.20]
     else:
-        # Standardowy rozkład z doktoratu Kamińskiego (Sec. 4.3.6)
         if ratio < 0.5:
             probs = [0.30, 0.30, 0.20, 0.10, 0.10]
         elif ratio <= 0.75:
@@ -234,19 +232,13 @@ def compute_base_distribution(
     sigma_y: float = 1.5,
     s_y: float = 1.0,
 ) -> np.ndarray:
-    """Oblicza bazowy rozkład prawdopodobieństwa B na siatce sąsiedztwa o wymiarach (h, w).
-
-    w = 2v + 1 (kolumny x od 0 do w-1)
-    h = v + 1  (wiersze y od 0 do h-1)
-    """
+    """Oblicza bazowy rozkład prawdopodobieństwa B na siatce sąsiedztwa o wymiarach (h, w)."""
     x_coords = np.arange(w, dtype=float)
     y_coords = np.arange(h, dtype=float)
 
-    # Skośny rozkład normalny dla osi x oraz y
     pdf_x = skewnorm.pdf(x_coords, a=gamma_x, loc=mu_x, scale=max(0.2, sigma_x))
     pdf_y = skewnorm.pdf(y_coords, a=gamma_y, loc=mu_y, scale=max(0.2, sigma_y))
 
-    # Iloczyn zewnętrzny: B(y, x) = s_y * pdf_y(y) * pdf_x(x)
     B = s_y * np.outer(pdf_y, pdf_x)
     return B
 
@@ -261,31 +253,40 @@ def sample_next_position(
 ) -> Tuple[int, int]:
     """Wyznacza wypadkowy rozkład i losuje nowe przemieszczenie (dy, dx).
 
-    Wykorzystuje mechanizm 'przeciążania' maski pędem:
-    P = B * (M_env)^beta_env * (M_coll)^beta_coll
-    Gdy beta -> 0 (duży pęd, brak czasu reakcji), pęd narciarza przeciąża maski i wjeżdża w lód/innego narciarza.
+    Gwarantuje, że komórki z env_mask == 0.0 (słupy wyciągu, krawędzie trasy) mają ZAWSZE 0.0 szans.
     """
-    # Zastosowanie wykładników sterowalności
-    # Bezpieczne potęgowanie: wartości masek są w [0, 1]
+    hard_obstacles = (env_mask <= 1e-9)
+
     effective_env = np.power(np.clip(env_mask, 0.0, 1.0), beta_env)
     effective_coll = np.power(np.clip(collision_mask, 0.0, 1.0), beta_coll)
 
-    # Wypadkowy rozkład P (Iloczyn Hadamarda z przeciążeniem)
+    # Iloczyn Hadamarda z wykładnikami
     P = base_dist * effective_env * effective_coll
+    # Bezwzględne zerowanie przeszkód twardych
+    P[hard_obstacles] = 0.0
 
     total_prob = np.sum(P)
     if total_prob <= 1e-12:
-        # Fallback awaryjny:
+        # Fallback z zachowaniem bezwzględnego zakazu wjazdu w przeszkody
         fallback = env_mask * base_dist
+        fallback[hard_obstacles] = 0.0
         if np.sum(fallback) > 0:
             P = fallback / np.sum(fallback)
         else:
-            h, w = base_dist.shape
-            return min(1, h - 1), (w - 1) // 2
+            # Awaryjny ruch w bezpieczne pole (gdzie env_mask > 0)
+            valid_indices = np.argwhere(env_mask > 0.0)
+            if len(valid_indices) > 0:
+                h, w = base_dist.shape
+                center_col = (w - 1) // 2
+                # Wybierz pole najbliższe jazdy na wprost
+                dists = [abs(idx[1] - center_col) + idx[0] for idx in valid_indices]
+                best_idx = valid_indices[np.argmin(dists)]
+                return int(best_idx[0]), int(best_idx[1])
+            else:
+                return 1, (base_dist.shape[1] - 1) // 2
 
     P = P / np.sum(P)
 
-    # Losowanie ruletkowe
     flat_idx = rng.choice(P.size, p=P.ravel())
     dy, dx = np.unravel_index(flat_idx, P.shape)
     return int(dy), int(dx)

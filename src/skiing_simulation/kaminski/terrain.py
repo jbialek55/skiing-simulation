@@ -3,7 +3,7 @@
 Zawiera:
 - Reprezentację regularnej siatki 1m x 1m z profilami wysokościowymi h(x, y),
 - Dynamiczną stygmergię stoku: degradację pokrywy śnieżnej S(x, y),
-  samoistne powstawanie oblodzeń w miejscach ześlizgu i odkładanie muld po bokach,
+  samoistne powstawanie kolistych/eliptycznych plam lodu i muld pod krawędziami nart,
 - Strefy przeszkód stałych (np. słupy podpory wyciągu z twardym zakazem p_c = 0),
 - Maski buforowe wokół krawędzi i przeszkód (p_c = d / r).
 """
@@ -42,7 +42,7 @@ class SlopeGrid25D:
         self.p_c = np.zeros((self.length, self.width), dtype=float)
 
         # Dynamiczne warstwy nawierzchni (stygmergia)
-        # Pokrywa śnieżna S(x, y): startowo 1.0 (idealny ubity sztruks)
+        # Pokrywa śnieżna S(x, y): startowo 1.0 (ubity świeży sztruks)
         self.snow_cover = np.ones((self.length, self.width), dtype=float)
         # Siatka oblodzenia I(x, y) w zakresie [0.0, 1.0]
         self.ice_map = np.zeros((self.length, self.width), dtype=float)
@@ -98,15 +98,14 @@ class SlopeGrid25D:
         right = int(np.clip(round(center + half_width + curvature), left + 1, self.width - 1))
         return left, right
 
-    def add_obstacle(self, center_x: int, center_y: int, radius: float = 1.8, label: str = "Wyciąg") -> None:
-        """Dodaje stałą przeszkodę (np. słup kolejki linowej/wyciągu) ze strefą zakazu p_c = 0."""
+    def add_obstacle(self, center_x: int, center_y: int, radius: float = 2.0, label: str = "Wyciąg") -> None:
+        """Dodaje stałą przeszkodę (np. słup kolejki/wyciągu) z absolutnym zakazem p_c = 0.0."""
         self.obstacles.append({
             "cx": float(center_x),
             "cy": float(center_y),
             "radius": float(radius),
             "label": label,
         })
-        # Wprowadzamy strefę wyłączenia i strefę buforową wokół przeszkody
         total_r = radius + self.r
         x_min = max(0, int(center_x - total_r - 1))
         x_max = min(self.width, int(center_x + total_r + 2))
@@ -123,13 +122,17 @@ class SlopeGrid25D:
                     self.p_c[gy, gx] = min(self.p_c[gy, gx], float(buf_factor))
 
     def setup_default_features(self) -> None:
-        """Konfiguruje przeszkody stałe oraz opcjonalne początkowe cechy trudności stoku."""
-        # Dodanie 2 słupów podpory wyciągu krzesełkowego w osi stoku
-        self.add_obstacle(center_x=16, center_y=110, radius=1.8, label="Słup wyciągu 1")
-        self.add_obstacle(center_x=24, center_y=220, radius=1.8, label="Słup wyciągu 2")
+        """Konfiguruje przeszkody stałe (słupy wyciągu) oraz strefy trudności (lód i muldy)."""
+        # Słup wyciągu 1: górny odcinek
+        self.add_obstacle(center_x=19, center_y=110, radius=2.0, label="Słup wyciągu 1")
+        # Słup wyciągu 2: dolny odcinek
+        self.add_obstacle(center_x=22, center_y=230, radius=2.0, label="Słup wyciągu 2")
 
-        # Początkowy mały płat lodu w naturalnym przewężeniu
-        self.add_ice_patch(center_x=20, center_y=165, radius_x=4.0, radius_y=10.0, max_intensity=0.85)
+        # Początkowy okrągły płat lodu w przewężeniu stoku (dopasowany do proporcji wyświetlania)
+        self.add_ice_patch(center_x=20, center_y=160, radius_x=4.0, radius_y=16.0, max_intensity=0.85)
+
+        # Początkowe okrągłe pole muld
+        self.add_mogul_field(center_x=18, center_y=280, radius_x=4.5, radius_y=18.0, max_roughness=0.75)
 
     def add_ice_patch(
         self,
@@ -139,7 +142,7 @@ class SlopeGrid25D:
         radius_y: float,
         max_intensity: float = 0.90,
     ) -> None:
-        """Dodaje statyczny eliptyczny płat lodu."""
+        """Dodaje eliptyczny/okrągły płat lodu o gładkich krawędziach."""
         self.ice_patches.append({
             "cx": center_x, "cy": center_y, "rx": radius_x, "ry": radius_y, "intensity": max_intensity
         })
@@ -155,6 +158,27 @@ class SlopeGrid25D:
                     val = max_intensity * (1.0 - dist_sq)
                     self.ice_map[y, x] = max(self.ice_map[y, x], float(val))
 
+    def add_mogul_field(
+        self,
+        center_x: int,
+        center_y: int,
+        radius_x: float,
+        radius_y: float,
+        max_roughness: float = 0.80,
+    ) -> None:
+        """Dodaje eliptyczne/okrągłe pole muld o radialnym profilu chropowatości."""
+        y_min = max(0, int(center_y - radius_y - 2))
+        y_max = min(self.length, int(center_y + radius_y + 3))
+        x_min = max(0, int(center_x - radius_x - 2))
+        x_max = min(self.width, int(center_x + radius_x + 3))
+
+        for y in range(y_min, y_max):
+            for x in range(x_min, x_max):
+                dist_sq = ((x - center_x) / radius_x) ** 2 + ((y - center_y) / radius_y) ** 2
+                if dist_sq <= 1.0:
+                    val = max_roughness * (1.0 - dist_sq)
+                    self.moguls_map[y, x] = max(self.moguls_map[y, x], float(val))
+
     def record_skier_action(
         self,
         old_x: int,
@@ -164,44 +188,54 @@ class SlopeGrid25D:
         v: float,
         turn_type: str,
     ) -> None:
-        """Dynamiczna stygmergia stoku: degradacja pokrywy śniegu i budowa muld.
+        """Dynamiczna stygmergia stoku: degradacja pokrywy śnieżnej i powstawanie kolistych muld/lodu.
 
-        Przejazd narciarza zeskrobuje śnieg pod krawędzią (rośnie oblodzenie I)
-        i odrzuca go na zewnątrz łuku (buduje chropowatość/muldę B).
+        Zamiast kwadratowych bloków, zeskrobywanie i odkładanie muld wykorzystuje radialny profil Gaussa.
         """
         dx = abs(new_x - old_x)
         dy = max(1, abs(new_y - old_y))
         transverse_ratio = float(dx) / float(dy)
 
-        # Intensywność krawędziowania: rośnie z prędkością i ostrością skrętu
-        scrape_intensity = (v / 15.0) * (0.05 + 0.15 * transverse_ratio)
+        # Intensywność krawędziowania
+        scrape_intensity = (v / 14.0) * (0.08 + 0.20 * transverse_ratio)
 
-        # Zeskrobywanie w komórkach trajektorii
-        min_x, max_x = min(old_x, new_x), max(old_x, new_x)
-        min_y, max_y = min(old_y, new_y), max(old_y, new_y)
+        # 1. Zeskrobywanie śniegu i wyłanianie lodu pod torem nart (kolisty promień wzdłuż wektora)
+        steps_interp = max(1, int(np.hypot(dx, dy)))
+        for s in range(steps_interp + 1):
+            alpha = s / float(steps_interp)
+            ix = int(round(old_x + alpha * (new_x - old_x)))
+            iy = int(round(old_y + alpha * (new_y - old_y)))
 
-        for cy in range(min_y, max_y + 1):
-            for cx in range(min_x, max_x + 1):
-                if 0 <= cx < self.width and 0 <= cy < self.length:
-                    # Obniżenie pokrywy śniegu
-                    self.snow_cover[cy, cx] = max(0.0, self.snow_cover[cy, cx] - 0.04 * scrape_intensity)
-                    # Gdy śnieg spada poniżej 0.65, wyłania się lód
-                    if self.snow_cover[cy, cx] < 0.65:
-                        ice_val = (0.65 - self.snow_cover[cy, cx]) / 0.65
-                        self.ice_map[cy, cx] = min(1.0, self.ice_map[cy, cx] + 0.12 * ice_val)
+            # Radialne zeskrobywanie w promieniu 1.8 m wokół buta/narty
+            r_scrape = 2
+            for qy in range(max(0, iy - r_scrape), min(self.length, iy + r_scrape + 1)):
+                for qx in range(max(0, ix - r_scrape), min(self.width, ix + r_scrape + 1)):
+                    d_sq = ((qx - ix) ** 2 + (qy - iy) ** 2) / (r_scrape ** 2)
+                    if d_sq <= 1.0:
+                        decay = (1.0 - d_sq) * 0.08 * scrape_intensity
+                        self.snow_cover[qy, qx] = max(0.0, self.snow_cover[qy, qx] - decay)
+                        if self.snow_cover[qy, qx] < 0.60:
+                            ice_factor = (0.60 - self.snow_cover[qy, qx]) / 0.60
+                            self.ice_map[qy, qx] = min(1.0, self.ice_map[qy, qx] + 0.15 * ice_factor * (1.0 - d_sq))
 
-        # Odkładanie śniegu na muldę na zewnątrz zakrętu
+        # 2. Odkładanie śniegu w postaci kolistych garbów (muld) na zewnętrznej krawędzi skrętu
         if turn_type in ("left", "right") and dx > 0:
-            # Dla zakrętu w lewo, śnieg odrzucany jest w prawo (i odwrotnie)
-            dep_offset_x = 2 if turn_type == "left" else -2
-            dep_x = int(np.clip(new_x + dep_offset_x, 0, self.width - 1))
-            dep_y = int(np.clip(new_y + 1, 0, self.length - 1))
+            # W lewo (dx < 0 na ekranie) -> śnieg leci w prawo (+x)
+            # W prawo (dx > 0 na ekranie) -> śnieg leci w lewo (-x)
+            dep_offset_x = -2.5 if turn_type == "left" else 2.5
+            dep_cx = int(round(new_x + dep_offset_x))
+            dep_cy = int(round(new_y + 1))
 
-            left_b, right_b = self.get_borders_at(dep_y)
-            if left_b <= dep_x <= right_b:
-                self.moguls_map[dep_y, dep_x] = min(1.0, self.moguls_map[dep_y, dep_x] + 0.08 * scrape_intensity)
-                # Lekkie podbicie wysokości mikroterenu
-                self.heights[dep_y, dep_x] += 0.02 * scrape_intensity
+            r_mogul = 2
+            for my in range(max(0, dep_cy - r_mogul), min(self.length, dep_cy + r_mogul + 1)):
+                for mx in range(max(0, dep_cx - r_mogul), min(self.width, dep_cx + r_mogul + 1)):
+                    left_b, right_b = self.get_borders_at(my)
+                    if left_b <= mx <= right_b:
+                        m_dist_sq = ((mx - dep_cx) ** 2 + (my - dep_cy) ** 2) / (r_mogul ** 2)
+                        if m_dist_sq <= 1.0:
+                            bump = (1.0 - m_dist_sq) * 0.12 * scrape_intensity
+                            self.moguls_map[my, mx] = min(1.0, self.moguls_map[my, mx] + bump)
+                            self.heights[my, mx] += 0.03 * bump
 
     def get_altitude(self, x: int, y: int) -> float:
         """Zwraca wysokość n.p.m. w punkcie (x, y)."""
@@ -239,7 +273,7 @@ class SlopeGrid25D:
     ) -> np.ndarray:
         """Wycina fragment maski terenu p_c dla sąsiedztwa (2v+1) x (v+1) wokół narciarza.
 
-        Łączy twarde ograniczenia stoku/przeszkód z behawioralną awersją do lodu i muld.
+        Punkty o p_c = 0.0 (przeszkody stałe jak słupy wyciągu) mają absolutne 0.0.
         """
         w = 2 * v + 1
         h = v + 1
@@ -269,6 +303,9 @@ class SlopeGrid25D:
             surface_penalty = (1.0 - ice_aversion * ice_sub) * (1.0 - mogul_aversion * mogul_sub)
             surface_penalty = np.clip(surface_penalty, 0.05, 1.0)
 
-            mask[mask_y_min:mask_y_max, mask_x_min:mask_x_max] = base_pc * surface_penalty
+            # Punkty o base_pc == 0.0 (słup, poza trasą) mają BEZWZGLĘDNIE 0.0
+            combined = base_pc * surface_penalty
+            combined[base_pc == 0.0] = 0.0
+            mask[mask_y_min:mask_y_max, mask_x_min:mask_x_max] = combined
 
         return mask
