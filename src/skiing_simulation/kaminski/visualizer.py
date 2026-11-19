@@ -28,7 +28,7 @@ class KaminskiVisualizer:
 
     def render_dashboard(
         self,
-        output_path: str | Path = "data/kaminski_simulation_result.png",
+        output_path: str | Path = "data/kaminski/kaminski_simulation_result.png",
         dpi: int = 150,
     ) -> Path:
         """Tworzy 4-panelowy panel diagnostyczny weryfikujący trajektorie, stygmergię i dynamikę."""
@@ -174,7 +174,7 @@ class KaminskiVisualizer:
 
     def render_animation(
         self,
-        output_path: str | Path = "data/kaminski_simulation_demo.gif",
+        output_path: str | Path = "data/kaminski/kaminski_simulation_demo.gif",
         fps: int = 8,
         dpi: int = 100,
     ) -> Path:

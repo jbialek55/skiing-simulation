@@ -1,66 +1,74 @@
 # Skiing Simulation Framework
 
-Środowisko wieloagentowych i cząsteczkowych symulacji dynamiki ruchu narciarzy na stoku.
-Repozytorium zawiera spójną, modułową implementację trzech modeli:
+Środowisko symulacji dynamiki ruchu narciarzy na stoku.
+Repozytorium zawiera spójną, modułową implementację trzech kluczowych modeli naukowych:
+
+1. **Holleczek & Tröster (ETH Zurich, 2012)** – Model cząsteczkowy oparty na klasycznej mechanice Newtona, siłach społecznych Helbinga i geometrii carvingu (*Phys. Rev. E 85, 056101*).
+2. **Zhang i in. (2024)** – Model stochastycznego automatu komórkowego z rozkładami prawdopodobieństwa w sąsiedztwie komórkowym.
+3. **Kamiński (AGH, 2026)** – Stochastyczny model wieloagentowy z prędkościowym sąsiedztwem $(2v+1) \times (v+1)$, skośnym rozkładem Gaussa, anizotropowymi stożkami kolizji, sterowalnością pędem ($\beta$) oraz dynamiczną stygmergią stoku (powstawanie lodu i muld).
 
 ---
 
-## 📁 Architektura pakietów
+## 📁 Czysta i modułowa struktura projektu
 
-Cały kod źródłowy znajduje się w katalogu `src/skiing_simulation/`, podzielonym na trzy dedykowane pakiety:
+Kod, dokumentacja oraz wyniki (wykresy i animacje) są **ściśle posegregowane według modeli**:
 
 ```text
-src/skiing_simulation/
-├── holleczek/             # Model dynamiki cząsteczkowej (Holleczek & Tröster 2012)
-│   ├── agent.py           # Klasa BaseSkier – siły społeczne Helbinga, carving i pęd
-│   ├── model.py           # Klasa SkiModel – przestrzeń ciągła ContinuousSpace
-│   ├── terrain.py         # SlopeTerrain – profil 2.5D DEM, granice stoku, przeszkody
-│   ├── visualizer.py      # SlopeVisualizer – trajektorie, widok z góry, animacje
-│   └── cli.py             # Interfejs konsolowy CLI
+skiing-simulation/
+├── docs/                             # Dokumentacja naukowa każdego modelu
+│   ├── HOLLECZEK.md                  # Szczegóły matematyczne modelu Holleczka
+│   ├── Zhang.md                      # Szczegóły modelu Zhanga
+│   └── KAMINSKI.md                   # Szczegóły modelu Kamińskiego
 │
-├── zhang/                 # Model automatu komórkowego (Zhang i in. 2024)
-│   ├── model.py           # ZhangModel, ZhangSkier – macierze prawdopodobieństwa
-│   ├── visualizer.py      # ZhangVisualizer – widok siatki, ruchy boczne
-│   └── cli.py             # Interfejs konsolowy CLI
+├── data/                             # Dane wyjściowe (wykresy PNG i animacje GIF)
+│   ├── holleczek/                    # Wykresy i GIF-y modelu Holleczka
+│   ├── zhang/                        # Wykresy i GIF-y modelu Zhanga
+│   └── kaminski/                     # Wykresy i GIF-y modelu Kamińskiego
 │
-└── kaminski/              # Model stochastyczny z adaptacyjnym otoczeniem (Kamiński 2026)
-    ├── agent.py           # Skier – style jazdy, stan awaryjny, pęd beta
-    ├── model.py           # SkiModel – anizotropowa kolizja, detekcja zderzeń
-    ├── distributions.py   # Rozkłady Skew-Normal, tabele faz zakrętów
-    ├── terrain.py         # SlopeGrid25D – stygmergia stoku (lód, muldy, wyciąg)
-    ├── visualizer.py      # KaminskiVisualizer – pulpit diagnostyczny i animacje GIF
-    └── cli.py             # Interfejs konsolowy CLI
+├── src/skiing_simulation/            # Pakiety źródłowe modeli
+│   ├── holleczek/                    # [Pakiet 1] agent.py, model.py, terrain.py, visualizer.py, cli.py
+│   ├── zhang/                        # [Pakiet 2] model.py, visualizer.py, cli.py
+│   └── kaminski/                     # [Pakiet 3] agent.py, model.py, terrain.py, visualizer.py, distributions.py, cli.py
+│
+├── holleczek_main.py                 # Skrót uruchomieniowy dla modelu Holleczka
+├── zhang_main.py                     # Skrót uruchomieniowy dla modelu Zhanga
+├── kaminski_main.py                  # Skrót uruchomieniowy dla modelu Kamińskiego
+├── main.py                           # Domyślny punkt startowy
+└── pyproject.toml                    # Konfiguracja środowiska i skrótów CLI
 ```
 
 ---
 
 ## 🚀 Uruchamianie modeli
 
-Dla każdego modelu przygotowano wygodny skrypt w katalogu głównym oraz komendę CLI w `pyproject.toml`:
+Dla każdego modelu przygotowano dedykowany skrypt oraz komendę CLI w `pyproject.toml`:
 
 ### 1. Model Holleczka (ETH Zurich 2012)
-* Szczegółowy opis: [`HOLLECZEK.md`](HOLLECZEK.md)
+* Dokumentacja: [`docs/HOLLECZEK.md`](docs/HOLLECZEK.md)
 * Uruchomienie:
   ```bash
   uv run python holleczek_main.py --skiers 4 --slope jochstock
   # lub
   uv run skiing-holleczek-simulation --skiers 4
   ```
+* Wyniki trafiają do: `data/holleczek/`
 
 ### 2. Model Zhanga (2024)
-* Szczegółowy opis: [`Zhang.md`](Zhang.md)
+* Dokumentacja: [`docs/Zhang.md`](docs/Zhang.md)
 * Uruchomienie:
   ```bash
   uv run python zhang_main.py --skiers 4 --steps 60
   # lub
   uv run skiing-zhang-simulation --skiers 4
   ```
+* Wyniki trafiają do: `data/zhang/`
 
 ### 3. Model Kamińskiego (AGH 2026)
-* Szczegółowy opis: [`KAMINSKI.md`](KAMINSKI.md)
+* Dokumentacja: [`docs/KAMINSKI.md`](docs/KAMINSKI.md)
 * Uruchomienie:
   ```bash
-  uv run python kaminski_main.py --skiers 6 --gif data/kaminski_simulation_demo.gif
+  uv run python kaminski_main.py --skiers 6 --gif data/kaminski/kaminski_simulation_demo.gif
   # lub
   uv run skiing-kaminski-simulation --skiers 16
   ```
+* Wyniki trafiają do: `data/kaminski/`

@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gif", type=str, default=None, help="Zapisuje animację GIF pod podaną ścieżką")
     parser.add_argument("--steps-per-frame", type=int, default=3, help="Kroki CA wykonywane na jedną klatkę")
     parser.add_argument("--max-frames", type=int, default=1000, help="Limit klatek animacji")
-    parser.add_argument("--output", default="data/zhang_simulation_result.png", help="Plik PNG podsumowania")
+    parser.add_argument("--output", default="data/zhang/zhang_simulation_result.png", help="Plik PNG podsumowania (domyślnie: data/zhang/zhang_simulation_result.png)")
     return parser.parse_args()
 
 

@@ -65,13 +65,13 @@ def parse_args(argv=None):
         "--gif",
         type=str,
         default=None,
-        help="Ścieżka do zapisu animacji GIF (np. data/simulation.gif)",
+        help="Ścieżka do zapisu animacji GIF (np. data/holleczek/simulation.gif)",
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="data/simulation_result.png",
-        help="Ścieżka do zapisu wykresu podsumowania",
+        default="data/holleczek/simulation_result.png",
+        help="Ścieżka do zapisu wykresu podsumowania (domyślnie: data/holleczek/simulation_result.png)",
     )
     return parser.parse_args(argv)
 

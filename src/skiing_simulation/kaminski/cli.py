@@ -62,14 +62,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=str,
-        default="data/kaminski_simulation_result.png",
-        help="Ścieżka do zapisu wykresów (domyślnie: data/kaminski_simulation_result.png)",
+        default="data/kaminski/kaminski_simulation_result.png",
+        help="Ścieżka do zapisu wykresów (domyślnie: data/kaminski/kaminski_simulation_result.png)",
     )
     parser.add_argument(
         "--gif",
         type=str,
         default=None,
-        help="Opcjonalna ścieżka do zapisu animacji GIF (np. data/kaminski_demo.gif)",
+        help="Opcjonalna ścieżka do zapisu animacji GIF (np. data/kaminski/kaminski_demo.gif)",
     )
     return parser
 
